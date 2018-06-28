@@ -1,0 +1,29 @@
+{
+  "name": "peepin",
+  "version": "1.0.0",
+  "description": "Peepeth IPFS pinner",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sponnet/peepin.git"
+  },
+  "keywords": [
+    "IPFS",
+    "peepeth",
+    "web3"
+  ],
+  "author": "sponnet",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sponnet/peepin/issues"
+  },
+  "homepage": "https://github.com/sponnet/peepin#readme",
+  "dependencies": {
+    "abi-decoder": "^1.1.0",
+    "ipfs-api": "git+https://github.com/sponnet/js-ipfs-api.git",
+    "web3": "^1.0.0-beta.34"
+  }
+}
