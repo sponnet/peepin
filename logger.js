@@ -20,7 +20,7 @@ const winstonFormat = format.printf((info) => {
 	return `${info.timestamp} ${level} : ${message}`;
 });
 
-const logger = createLogger({
+let logger = createLogger({
 	level: 'info',
 	format: format.combine(
 		format.splat(),
