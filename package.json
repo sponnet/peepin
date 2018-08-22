@@ -23,7 +23,6 @@
   "homepage": "https://github.com/sponnet/peepin#readme",
   "dependencies": {
     "abi-decoder": "^1.1.0",
-    "ethjs": "^0.4.0",
     "ipfs-api": "git+https://github.com/sponnet/js-ipfs-api.git",
     "web3": "^1.0.0-beta.35"
   }
