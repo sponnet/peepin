@@ -4,7 +4,6 @@ const logger = require("./logger");
 const ThrottledIPFS = require("./ThrottledIPFS");
 const ipfsAPI = require("ipfs-api");
 const parsers = require("./parsers");
-//const web3 = require("./web3");
 
 class Peepin {
   /**
@@ -54,8 +53,8 @@ class Peepin {
       .on("data", blockHeader => {
         logger.info("new blockheight %d", blockHeader.number);
         this.highestBlock = blockHeader.number;
-		this.readEvents();
-		logger.info('ipfs stats: %j',this.throttledIPFS.getStats());
+        this.readEvents();
+        logger.info("ipfs stats: %j", this.throttledIPFS.getStats());
       })
       .on("error", console.error);
 
@@ -113,8 +112,8 @@ class Peepin {
   }
 
   // Decodes blockchain event data and feeds each event to the parser
-  async parseEvent(event) {
-    logger.info("Parse event %j", event);
+  parseEvent(event) {
+    //logger.info("Parse event %j", event);
     this.web3.eth
       .getTransaction(event.transactionHash)
       .then(transaction => {
@@ -183,7 +182,13 @@ class Peepin {
             this.throttledIPFS.cat(hash).then(ipfsData => {
               decodedData.ipfsData = JSON.parse(ipfsData.toString());
               if (parsers[decodedData.name]) {
-                parsers[decodedData.name](decodedData);
+                parsers[decodedData.name](
+                  {
+                    throttledIPFS: this.throttledIPFS,
+                    web3: this.web3
+                  },
+                  decodedData
+                );
               } else {
                 logger.warn("No parser for function %s", decodedData.name);
                 process.exit();
@@ -199,7 +204,13 @@ class Peepin {
           case "newAddress":
           case "transferAccount":
             if (parsers[decodedData.name]) {
-              parsers[decodedData.name](decodedData);
+              parsers[decodedData.name](
+                {
+                  throttledIPFS: this.throttledIPFS,
+                  web3: this.web3
+                },
+                decodedData
+              );
             } else {
               logger.warn("No parser for function %s", decodedData.name);
               process.exit();
