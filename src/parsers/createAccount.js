@@ -1,16 +1,16 @@
 const logger = require("../logger");
 const https = require("https");
 const url = require("url");
+const db = require("../db").db;
 
-
-module.exports = (helpers, data) => {
+module.exports = (helpers, data, event) => {
   return new Promise((resolve, reject) => {
-
     // add username from function call to IPFS payload
-    data.ipfsData._name = helpers.web3.utils.hexToAscii(data.params[0].value);
-
+    data.ipfsData._name = helpers.web3.utils.hexToUtf8(data.params[0].value);
+    data.ipfsData.event = event;
+    //    data.ipfsData._from =
     // add image links from website (S3) to IPFS & add them to IPFS payload
-    // 
+    //
     // S3 links for the profile pics are located at
     //
     // "avatarUrl": "peepeth:bECcUGZh:jpg",
@@ -85,10 +85,20 @@ module.exports = (helpers, data) => {
       );
     }
 
-    Promise.all(promises).then(()=>{
-        logger.info("createAccount parser with (resolved) data %j", data.ipfsData);
-        resolve();    
-    });
+    Promise.all(promises).then(() => {
+      logger.info(
+        "createAccount parsed. Account %s added",
+        data.ipfsData.event.address
+      );
 
+      const key = "user-" + data.ipfsData._name; //data.ipfsData.event.address;
+      db.put(key, JSON.stringify(data.ipfsData), function(err) {
+        if (err) {
+          logger.error(err);
+          reject(err);
+        }
+        resolve();
+      });
+    });
   });
 };

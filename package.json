@@ -24,6 +24,7 @@
   "dependencies": {
     "abi-decoder": "^1.1.0",
     "ipfs-api": "git+https://github.com/sponnet/js-ipfs-api.git",
+    "level": "^4.0.0",
     "web3": "^1.0.0-beta.35"
   }
 }

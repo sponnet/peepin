@@ -74,5 +74,18 @@
     "shareID": null,
     "untrustedAddress": "0x788d7dcc3c5a23ab08b343e25d76e0cd3174761c",
     "untrustedTimestamp": 1521156236
+  },
+  {
+    "info": "",
+    "location": "San Francisco",
+    "realName": "AntonMu",
+    "website": "http://antonmuehlemann.de/",
+    "avatarUrl": "peepeth:24BWprZL:jpg",
+    "backgroundUrl": "peepeth:dUiQ8LHs:png",
+    "messageToWorld": "",
+    "untrustedTimestamp": 1521156101,
+    "_name": "Anton\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+    "avatarIPFSHash": "QmYbJoSDQEFEkMqmobVGZoXhLSBVv7HSmyq4pQiNKryXZv",
+    "backgroundIPFSHash": "QmXfZZqQiaQrDG6uqaAaosPRGsLrbcztTfoPW8nDXxv8BQ"
   }
 ]
