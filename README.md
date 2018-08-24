@@ -170,3 +170,9 @@ minSiteTipPercentage()
 transferOwnership(newOwner address)
 ```
 
+# How can you help ?
+
+Currently we need more insights in the data format and improve the parsers. So if you want to take a look at the issues, please install the ZenHub plugin for your browser (https://www.zenhub.com/) and head over to the board. https://github.com/sponnet/peepin#boards
+
+
+
