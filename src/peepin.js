@@ -3,6 +3,7 @@ const abiDecoder = require("abi-decoder");
 const logger = require("./logger");
 const ThrottledIPFS = require("./ThrottledIPFS");
 const ipfsAPI = require("ipfs-api");
+const parsers = require("./parsers");
 //const web3 = require("./web3");
 
 class Peepin {
@@ -14,9 +15,6 @@ class Peepin {
    * @param      {string}  web3socketurl  The Web3 socketurl to use
    */
   constructor(ipfshost, ipfsport, web3socketurl) {
-    // this.ipfshost = ipfshost;
-    // this.ipfsport = ipfsport;
-    //this.web3socketurl = web3socketurl;
     this.web3 = require("./web3")(web3socketurl);
 
     const ipfs = ipfsAPI({
@@ -37,7 +35,7 @@ class Peepin {
    */
   go() {
     logger.info(
-      "Starting Peepeth pinner on %s ( from block %s)",
+      "Starting Peepeth pinner on %s ( from block %d)",
       metaData.contract,
       metaData.startblock
     );
@@ -45,27 +43,19 @@ class Peepin {
 
     abiDecoder.addABI(metaData.abi);
 
-    this.lastReadBlock = parseInt(metaData.startblock);
+    this.lastReadBlock = metaData.startblock;
     this.eventCount = 0;
     this.pinCount = 0;
     this.picHashes = [];
 
     // subscribe to new blocks appearing on the chain to update
     this.web3.eth
-      .subscribe("newBlockHeaders", (error, result) => {
-        if (!error) {
-          logger.info("subscribed to newBlockHeaders");
-          return;
-        }
-        logger.error(error);
-      })
+      .subscribe("newBlockHeaders")
       .on("data", blockHeader => {
         logger.info("new blockheight %d", blockHeader.number);
-        if (!this.readingEvents) {
-          logger.info("waking up event reader");
-          this.readingEvents = true;
-          this.readEvents(this.lastReadBlock);
-        }
+        this.highestBlock = blockHeader.number;
+		this.readEvents();
+		logger.info('ipfs stats: %j',this.throttledIPFS.getStats());
       })
       .on("error", console.error);
 
@@ -73,18 +63,23 @@ class Peepin {
     this.web3.eth.getBlockNumber().then(blockNr => {
       logger.info("blockchain is at block %d", blockNr);
       this.highestBlock = parseInt(blockNr);
-      this.readingEvents = true;
-      this.readEvents(this.lastReadBlock);
+      this.readEvents();
     });
   }
 
-  readEvents(fromBlock) {
-    if (this.highestBlock <= fromBlock) {
-      logger.info("event reader going to sleep");
-      this.readingEvents = false;
-      return;
+  // Recursively reads events from a certain startBlock up to the highest block known
+  readEvents(checkSemaphore) {
+    let fromBlock = this.lastReadBlock;
+    let toBlock = fromBlock + 10000;
+    if (toBlock > this.highestBlock) {
+      toBlock = this.highestBlock;
     }
-    let toBlock = fromBlock + 1000;
+    if (!checkSemaphore) {
+      if (this.readingEvents === true) {
+        return;
+      }
+      this.readingEvents = true;
+    }
     logger.info(
       "Reading block-range %d -> %d (%d remaining)",
       fromBlock,
@@ -98,22 +93,33 @@ class Peepin {
         toBlock: toBlock
       },
       (error, events) => {
-        this.lastReadBlock = toBlock;
-        logger.info("done..");
         events.map(this.parseEvent.bind(this));
-        //        console.log(JSON.stringify(event));
-        this.readEvents(toBlock);
+        logger.info("done..");
+        this.lastReadBlock = toBlock;
+        if (this.highestBlock > toBlock) {
+          this.readEvents(true);
+        } else {
+          logger.info(
+            "fromBlock %d - lastReadBlock %d - highestBlock %d",
+            fromBlock,
+            this.lastReadBlock,
+            this.highestBlock
+          );
+          logger.info("event reader going to sleep");
+          this.readingEvents = false;
+        }
       }
     );
   }
 
-  parseEvent(result) {
-    logger.info("Parse event");
+  // Decodes blockchain event data and feeds each event to the parser
+  async parseEvent(event) {
+    logger.info("Parse event %j", event);
     this.web3.eth
-      .getTransaction(result.transactionHash)
+      .getTransaction(event.transactionHash)
       .then(transaction => {
         if (transaction.blockNumber > this.highestBlock) {
-          this.highestBlock = transaction.blockNumber;
+          this.lastReadBlock = transaction.blockNumber;
         }
         if (!transaction.input) {
           return logger.error(new Error("no transaction input found"));
@@ -130,126 +136,188 @@ class Peepin {
           return logger.error(new Error("error decoding method"));
         }
 
-        logger.info("decoded event=%s", decodedData.name);
+        // updateAccount(_ipfsHash string)
+        // reply(_ipfsHash string)
+        // share(_ipfsHash string)
+        // saveBatch(_ipfsHash string)
+        // post(_ipfsHash string)
+        // createAccount(_name bytes16,_ipfsHash string)
+        // tip(_author address,_messageID string,_ownerTip uint256,_ipfsHash string)
+
+        // unFollow(_followee address)
+        // setIsActive(_isActive bool)
+        // follow(_followee address)
+        // changeName(_name bytes16)
+        // setNewAddress(_address address)
+        // newAddress()
+        // transferAccount(_address address)
+
+        // isActive()
+        // names( address)
+        // addresses( bytes32)
+        // owner()
+        // accountExists(_addr address)
+        // isValidName(bStr bytes16)
+        // tipPercentageLocked()
+
+        // cashout()
+        // setMinSiteTipPercentage(newMinPercentage uint256)
+        // interfaceInstances( uint256)
+        // lockMinSiteTipPercentage()
+        // interfaceInstanceCount()
+        // minSiteTipPercentage()
+        // transferOwnership(newOwner address)
 
         switch (decodedData.name) {
-          case "createAccount":
           case "updateAccount":
-          case "tip":
-            var found = decodedData.params.find(function(element) {
-              return element.name === "_ipfsHash";
-            });
-            logger.info("%s - IPFS=%s", decodedData.name, found.value);
-            // options.pinner
-            //   .pin(metaData.contract, found.value, this.defaultTtl)
-            //   .then(() => {
-            //     this.pinCount++;
-            //   })
-            //   .catch(e => {
-            //     logger.warn("Error pinning: %s", e.message);
-            //   });
-            break;
-          case "post":
           case "reply":
-            var found = decodedData.params.find(function(element) {
-              return element.name === "_ipfsHash";
-            });
-            this.parsePeep(found.value);
-            break;
-          case "saveBatch":
-            var found = decodedData.params.find(function(element) {
-              return element.name === "_ipfsHash";
-            });
-            this.throttledIPFS.cat(found.value).then(file => {
-              const s = JSON.parse(file.toString());
-              if (s.batchSaveJSON && Array.isArray(s.batchSaveJSON)) {
-                s.batchSaveJSON.forEach(batchItem => {
-                  const command = Object.keys(batchItem)[0];
-                  switch (command) {
-                    case "follow":
-                    case "unfollow":
-                    case "changeName":
-                      break;
-                    case "peep":
-                      if (batchItem[command].ipfs) {
-                        this.parsePeep(batchItem[command].ipfs);
-                      }
-                      break;
-                    case "love":
-                      if (batchItem[command].messageID) {
-                        this.parsePeep(batchItem[command].messageID);
-                      }
-                      break;
-                    default:
-                      logger.warn("unknown function %s %j", command, batchItem);
-                      process.exit();
-                      break;
-                  }
-                });
-              }
-            });
-            break;
           case "share":
-            var found = decodedData.params.find(function(element) {
+          case "saveBatch":
+          case "post":
+          case "createAccount":
+          case "tip":
+            // these are functions that have an IPFS payload that needs to be resolved
+            var hash = decodedData.params.find(function(element) {
               return element.name === "_ipfsHash";
-            });
-            // options.pinner
-            //   .pin(metaData.contract, found.value, this.defaultTtl)
-            //   .then(() => {
-            //     this.pinCount++;
-            //   })
-            //   .catch(e => {
-            //     logger.warn("Error pinning: %s", e.message);
-            //   });
-            this.throttledIPFS.cat(found.value).then(file => {
-              const s = JSON.parse(file.toString());
-              if (s.pic && s.pic != "") {
-                this.picHashes.push(s.pic);
-                // options.pinner
-                //   .pin(metaData.contract, s.pic, this.defaultTtl)
-                //   .then(() => {
-                //     this.pinCount++;
-                //   })
-                //   .catch(e => {
-                //     logger.warn("Error pinning: %s", e.message);
-                //   });
-              }
-              if (s.shareID && s.shareID != "") {
-                // options.pinner
-                //   .pin(metaData.contract, s.shareID, this.defaultTtl)
-                //   .then(() => {
-                //     this.pinCount++;
-                //   })
-                //   .catch(e => {
-                //     logger.warn("Error pinning: %s", e);
-                //   });
+            }).value;
+            this.throttledIPFS.cat(hash).then(ipfsData => {
+              decodedData.ipfsData = JSON.parse(ipfsData.toString());
+              if (parsers[decodedData.name]) {
+                parsers[decodedData.name](decodedData);
+              } else {
+                logger.warn("No parser for function %s", decodedData.name);
+                process.exit();
               }
             });
             break;
-          case "love":
-            var found = decodedData.params.find(function(element) {
-              return element.name === "messageID";
-            });
-            // options.pinner
-            //   .pin(metaData.contract, found.value, this.defaultTtl)
-            //   .then(() => {
-            //     this.pinCount++;
-            //   })
-            //   .catch(e => {
-            //     logger.warn("Error pinning: %s", e.message);
-            //   });
-            break;
+
+          case "unFollow":
+          case "setIsActive":
           case "follow":
-          case "unfollow":
           case "changeName":
-            // no IPFS involved here..
+          case "setNewAddress":
+          case "newAddress":
+          case "transferAccount":
+            if (parsers[decodedData.name]) {
+              parsers[decodedData.name](decodedData);
+            } else {
+              logger.warn("No parser for function %s", decodedData.name);
+              process.exit();
+            }
             break;
+
+          case "cashout":
+          case "setMinSiteTipPercentage":
+          case "lockMinSiteTipPercentage":
+          case "transferOwnership":
+            // ignore these
+            break;
+
+          //   case "post":
+          //   case "reply":
+          //     var hash = decodedData.params.find(function(element) {
+          //       return element.name === "_ipfsHash";
+          //     }).value;
+          //     this.throttledIPFS.cat(hash).then(ipfsData => {
+          //       logger.info("command=%s - Data=%s", decodedData.name, ipfsData);
+          //     });
+          //     //            this.parsePeep(found.value);
+          //     break;
+          //   case "saveBatch":
+          //     var hash = decodedData.params.find(function(element) {
+          //       return element.name === "_ipfsHash";
+          //     }).value;
+          //     this.throttledIPFS.cat(hash).then(ipfsData => {
+          //       logger.info("command=%s - Data=%s", decodedData.name, ipfsData);
+          //       const s = JSON.parse(ipfsData.toString());
+          //       if (s.batchSaveJSON && Array.isArray(s.batchSaveJSON)) {
+          //         s.batchSaveJSON.forEach(batchItem => {
+          //           const command = Object.keys(batchItem)[0];
+          //           switch (command) {
+          //             case "follow":
+          //             case "unfollow":
+          //             case "changeName":
+          //               break;
+          //             case "peep":
+          //               if (batchItem[command].ipfs) {
+          //                 this.parsePeep(batchItem[command].ipfs);
+          //               }
+          //               break;
+          //             case "love":
+          //               if (batchItem[command].messageID) {
+          //                 this.parsePeep(batchItem[command].messageID);
+          //               }
+          //               break;
+          //             default:
+          //               logger.warn("unknown function %s %j", command, batchItem);
+          //               process.exit();
+          //               break;
+          //           }
+          //         });
+          //       }
+          //     });
+          //     break;
+          //   case "share":
+          //     var hash = decodedData.params.find(function(element) {
+          //       return element.name === "_ipfsHash";
+          //     }).value;
+          //     this.throttledIPFS.cat(hash).then(ipfsData => {
+          //       logger.info("command=%s - Data=%s", decodedData.name, ipfsData);
+          //     });
+          //     // options.pinner
+          //     //   .pin(metaData.contract, found.value, this.defaultTtl)
+          //     //   .then(() => {
+          //     //     this.pinCount++;
+          //     //   })
+          //     //   .catch(e => {
+          //     //     logger.warn("Error pinning: %s", e.message);
+          //     //   });
+          //     // this.throttledIPFS.cat(hash).then(ipfsData => {
+          //     //   const s = JSON.parse(ipfsData.toString());
+          //     //   if (s.pic && s.pic != "") {
+          //     //     this.picHashes.push(s.pic);
+          //     //     // options.pinner
+          //     //     //   .pin(metaData.contract, s.pic, this.defaultTtl)
+          //     //     //   .then(() => {
+          //     //     //     this.pinCount++;
+          //     //     //   })
+          //     //     //   .catch(e => {
+          //     //     //     logger.warn("Error pinning: %s", e.message);
+          //     //     //   });
+          //     //   }
+          //     //   if (s.shareID && s.shareID != "") {
+          //     //     // options.pinner
+          //     //     //   .pin(metaData.contract, s.shareID, this.defaultTtl)
+          //     //     //   .then(() => {
+          //     //     //     this.pinCount++;
+          //     //     //   })
+          //     //     //   .catch(e => {
+          //     //     //     logger.warn("Error pinning: %s", e);
+          //     //     //   });
+          //     //   }
+          //     // });
+          //     break;
+          //   case "love":
+          //     var found = decodedData.params.find(function(element) {
+          //       return element.name === "messageID";
+          //     });
+          //     // options.pinner
+          //     //   .pin(metaData.contract, found.value, this.defaultTtl)
+          //     //   .then(() => {
+          //     //     this.pinCount++;
+          //     //   })
+          //     //   .catch(e => {
+          //     //     logger.warn("Error pinning: %s", e.message);
+          //     //   });
+          //     break;
+          //   case "follow":
+          //   case "unFollow":
+          //   case "changeName":
+          //     // no IPFS involved here..
+          //     break;
           default:
-            logger.warn(
-              "unknown function %s (%j)",
-              decodedData.name,
-              decodedData
-            );
+            logger.warn("unknown function %s", decodedData.name);
+            process.exit();
             break;
         }
       })
