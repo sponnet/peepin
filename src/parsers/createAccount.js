@@ -3,11 +3,12 @@ const https = require("https");
 const url = require("url");
 const db = require("../db").db;
 
-module.exports = (helpers, data, event) => {
+module.exports = (helpers, data, transaction) => {
   return new Promise((resolve, reject) => {
     // add username from function call to IPFS payload
     data.ipfsData._name = helpers.web3.utils.hexToUtf8(data.params[0].value);
-    data.ipfsData.event = event;
+    data.ipfsData.transaction = transaction;
+
     //    data.ipfsData._from =
     // add image links from website (S3) to IPFS & add them to IPFS payload
     //
@@ -86,12 +87,9 @@ module.exports = (helpers, data, event) => {
     }
 
     Promise.all(promises).then(() => {
-      logger.info(
-        "createAccount parsed. Account %s added",
-        data.ipfsData.event.address
-      );
+      const key = "user-" + data.ipfsData.transaction.from;
+      logger.info("createAccount parsed. Account %s added", key);
 
-      const key = "user-" + data.ipfsData._name; //data.ipfsData.event.address;
       db.put(key, JSON.stringify(data.ipfsData), function(err) {
         if (err) {
           logger.error(err);

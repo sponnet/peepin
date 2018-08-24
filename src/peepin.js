@@ -34,8 +34,13 @@ class Peepin {
    *
    */
   go() {
-    this.dumpUsers();
+    this.dumpPeeps().then(headHash => {
+      logger.info("dump peeps done. head hash=%s", headHash);
+      this.go2();
+    });
+  }
 
+  go2() {
     logger.info(
       "Starting Peepeth pinner on %s ( from block %d)",
       metaData.contract,
@@ -107,8 +112,8 @@ class Peepin {
             this.lastReadBlock,
             this.highestBlock
           );
-		  logger.info("event reader going to sleep");
-		  this.dumpUsers();
+          logger.info("event reader going to sleep");
+          this.dumpUsers();
           this.readingEvents = false;
         }
       }
@@ -140,6 +145,93 @@ class Peepin {
           }
         );
       });
+  }
+
+  // dump the local cache with all users to IPFS
+  dumpPeeps() {
+    return new Promise(resolve => {
+      let peepkeys = [];
+      db.createReadStream()
+        .on("data", data => {
+          if (data.key.startsWith("peep-")) {
+            peepkeys.push(data.key);
+          }
+        })
+        .on("error", err => {
+          console.log("Oh my!", err);
+        })
+        .on("end", () => {
+          console.log("Stream ended. %d peeps", peepkeys.length);
+          peepkeys.sort();
+          peepkeys = peepkeys.reverse();
+
+          this.chainPeeps(peepkeys).then(head => {
+            resolve(head);
+          });
+
+          // this.throttledIPFS.ipfs.add(
+          //   Buffer.from(JSON.stringify(users)),
+          //   function(err, files) {
+          //     if (!err && files && files[0]) {
+          //       logger.info("saved users on IPFS %s", files[0].hash);
+          //     } else {
+          //       logger.error(err);
+          //     }
+          //   }
+          // );
+        });
+    });
+  }
+
+  chainPeeps(peeps, lastChild) {
+    return new Promise(resolve => {
+      if (peeps.length == 0) {
+        logger.info("no more peeps found. lastChild=%s", lastChild);
+        return resolve(lastChild);
+      }
+      const currentKey = peeps.pop();
+
+      db.get(currentKey, (err, value) => {
+        if (err) {
+          if (err.notFound) {
+            // handle a 'NotFoundError' here
+            return;
+          }
+          // I/O or other error, pass it up the callback chain
+          return callback(err);
+        }
+        value = JSON.parse(value);
+        if (!value.childHash) {
+          value.childHash = lastChild;
+          this.throttledIPFS.ipfs.add(
+            Buffer.from(JSON.stringify(value)),
+            (err, files) => {
+              if (!err && files && files[0]) {
+                db.put(currentKey, JSON.stringify(value), err => {
+                  if (err) {
+                    logger.error(err);
+                  }
+                  logger.info(
+                    "saved peep. hash=%s - previous=%s - remaining=%d",
+                    files[0].hash,
+                    lastChild,
+                    peeps.length
+                  );
+                  return resolve(this.chainPeeps(peeps, files[0].hash));
+                });
+              } else {
+                logger.error(err);
+              }
+            }
+          );
+        } else {
+          logger.info(
+            "found link with last saved peep. lastChild=%s",
+            lastChild
+          );
+        }
+      });
+    });
   }
 
   // Decodes blockchain event data and feeds each event to the parser
@@ -219,7 +311,7 @@ class Peepin {
                     web3: this.web3
                   },
                   decodedData,
-                  event
+                  transaction
                 );
               } else {
                 logger.warn("No parser for function %s", decodedData.name);
@@ -242,7 +334,7 @@ class Peepin {
                   web3: this.web3
                 },
                 decodedData,
-                event
+                transaction
               );
             } else {
               logger.warn("No parser for function %s", decodedData.name);

@@ -1,11 +1,11 @@
 module.exports = {
   createAccount: require("./createAccount"),
-  updateAccount: require("./updateAccount"),
+  post: require("./post"),
 
+  updateAccount: require("./ignore"),
   reply: require("./ignore"),
   share: require("./ignore"),
   saveBatch: require("./ignore"),
-  post: require("./ignore"),
   tip: require("./ignore"),
 
   unFollow: require("./ignore"),
