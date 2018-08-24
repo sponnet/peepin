@@ -43,7 +43,7 @@ class ThrottledIPFS {
 				}
 				return resolve(r);
 			});
-			this.logger.info('ThrottledIPFS : cat queue %d running - length %d', this.catQ.running(), this.catQ.length());
+			//this.logger.info('ThrottledIPFS : cat queue %d running - length %d', this.catQ.running(), this.catQ.length());
 		});
 	}
 
@@ -55,7 +55,7 @@ class ThrottledIPFS {
 				}
 				return resolve(r);
 			});
-			this.logger.info('ThrottledIPFS : pin queue %d running - length %d', this.pinQ.running(), this.pinQ.length());
+			//this.logger.info('ThrottledIPFS : pin queue %d running - length %d', this.pinQ.running(), this.pinQ.length());
 		});
 	}
 
