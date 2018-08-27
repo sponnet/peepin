@@ -29,6 +29,8 @@ Each peep event is read from the smart contract in the `peepin.js` file. Each ev
 
 The parser then does whatever he wants with the data. Currently the implemented parsers use a local 'leveldb' database to store some of its info for easiers lookups later.
 
+If you want to help implement parsers, there's some info and ideas in this `epic` https://github.com/sponnet/peepin/issues/2
+
 # Analysis of the Peepeth functions
 
 ## User functions that change state with IPFS data
