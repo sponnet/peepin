@@ -9,7 +9,7 @@ Useful for re-organizing peepeth data or creating data slices.
 
 ## Prerequisites
 
-- a running IPFS daemon on localhost
+- a running IPFS daemon on localhost (https://ipfs.io/docs/install/)
 - an Ethereum node with websocket support ( run Parity / geth ) or use Infura (discouraged because centralized)
 
 ## Installation
