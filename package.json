@@ -26,6 +26,7 @@
     "command-line-tool": "^0.8.0",
     "dotenv": "^6.0.0",
     "ipfs-api": "git+https://github.com/sponnet/js-ipfs-api.git",
+    "level": "^4.0.0",
     "web3": "^1.0.0-beta.35",
     "winston": "^3.0.0"
   }
