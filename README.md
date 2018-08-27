@@ -7,12 +7,31 @@ Useful for re-organizing peepeth data or creating data slices.
 
 # Usage (development)
 
+## Prerequisites
+
+- a running IPFS daemon on localhost (https://ipfs.io/docs/install/)
+- an Ethereum node with websocket support ( run Parity / geth ) or use Infura (discouraged because centralized)
+
+Pro Tip: check https://dappnode.io/ for a free (as in hassle-free) linux image that includes all of the above !
+
+## Installation
+
 ```
 
 npm install
 node ./bin.js --ipfsapihost localhost --ipfsapiport 5001 --web3hostws wss://mainnet.infura.io/_ws
 
 ```
+
+Currently the only thing that this does is iterate through all Peepeth events - and un it through the current version of parsers. The only thing that they do currently is copying the centralized aspects of Peepeth ( the avatar images and backgrounds ) to IFPS and create a tree of linked peeps on IPFS. A demo of the output is currently at https://peepfeed.netlify.com - but there is a lot more that we could do using this data..
+
+# Architecture of the parsers
+
+Each peep event is read from the smart contract in the `peepin.js` file. Each event first trigggers a download of the related IPFS data (The IPFS hash in the contract function) and then looks up if a parser exists for its type, and if so it passes all this data to the corresponding parser ( see `parsers/index.js` for the mapping of data-types -> parser.
+
+The parser then does whatever he wants with the data. Currently the implemented parsers use a local 'leveldb' database to store some of its info for easiers lookups later.
+
+If you want to help implement parsers, there's some info and ideas in this `epic` https://github.com/sponnet/peepin/issues/2
 
 # Analysis of the Peepeth functions
 
