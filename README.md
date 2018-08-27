@@ -12,6 +12,8 @@ Useful for re-organizing peepeth data or creating data slices.
 - a running IPFS daemon on localhost (https://ipfs.io/docs/install/)
 - an Ethereum node with websocket support ( run Parity / geth ) or use Infura (discouraged because centralized)
 
+Pro Tip: check https://dappnode.io/ for a free (as in hassle-free) linux image that includes all of the above !
+
 ## Installation
 
 ```
