@@ -38,6 +38,7 @@ class Peepin {
       logger.info("dump peeps done. head hash=%s", headHash);
       this.go2();
     });
+//    this.go2();
   }
 
   go2() {
@@ -149,25 +150,39 @@ class Peepin {
 
   // dump the local cache with all users to IPFS
   dumpPeeps() {
+    let headPeep='';
     return new Promise(resolve => {
-      let peepkeys = [];
+      let orderedpeeps = {};
       db.createReadStream()
         .on("data", data => {
           if (data.key.startsWith("peep-")) {
-            peepkeys.push(data.key);
+            let peep = JSON.parse(data.value);
+            orderedpeeps[peep.ipfsData.untrustedTimestamp] = peep.ipfsHash;
           }
         })
         .on("error", err => {
           console.log("Oh my!", err);
         })
         .on("end", () => {
+          let peepkeys= Object.keys(orderedpeeps);
+          if (peepkeys.length === 0){
+            // no peeps yet to index.
+            return resolve(null);
+          }
           console.log("Stream ended. %d peeps", peepkeys.length);
           peepkeys.sort();
-          peepkeys = peepkeys.reverse();
-
-          this.chainPeeps(peepkeys).then(head => {
-            resolve(head);
+          //peepkeys = peepkeys.reverse();
+          if (!headPeep){
+            headPeep = orderedpeeps[peepkeys[peepkeys.length-2]];
+          }
+          this.chainPeeps(peepkeys,orderedpeeps).then(()=>{
+            logger.info('chain finished. Head=%s',headPeep);
+            return resolve(headPeep);
           });
+          
+          // this.chainPeeps(peepkeys).then(key => {
+          //   resolve(orderedpeeps[key]);
+          // });
 
           // this.throttledIPFS.ipfs.add(
           //   Buffer.from(JSON.stringify(users)),
@@ -183,41 +198,43 @@ class Peepin {
     });
   }
 
-  chainPeeps(peeps, lastChild) {
+  chainPeeps(peepkeys,peepkeymap,parentHash) {
     return new Promise(resolve => {
-      if (peeps.length == 0) {
-        logger.info("no more peeps found. lastChild=%s", lastChild);
-        return resolve(lastChild);
+      if (peepkeys.length===0){
+        return resolve(parentHash);
+      }else{
+        logger.info('%d peeps remaining',peepkeys.length);
       }
-      const currentKey = peeps.pop();
-
-      db.get(currentKey, (err, value) => {
+      let key = peepkeys.pop();
+      logger.info('fetching peep %s',peepkeymap[key]);
+      db.get('peep-' + peepkeymap[key], (err, value) => {
         if (err) {
           if (err.notFound) {
-            // handle a 'NotFoundError' here
             return;
           }
-          // I/O or other error, pass it up the callback chain
-          return callback(err);
         }
         value = JSON.parse(value);
-        if (!value.childHash) {
-          value.childHash = lastChild;
+        //debugger;
+        logger.info("peep found. %s date %s", value.ipfsHash,new Date(value.ipfsData.untrustedTimestamp*1000).toString());
+        //value.parentHash = null;
+        if (!value.parentHash) {
+          //debugger;
+          value.parentHash = parentHash; //peepkeymap[peepkeys[peepkeys.length-1]];
           this.throttledIPFS.ipfs.add(
             Buffer.from(JSON.stringify(value)),
             (err, files) => {
               if (!err && files && files[0]) {
-                db.put(currentKey, JSON.stringify(value), err => {
+                db.put('peep-' + key, JSON.stringify(value), err => {
                   if (err) {
                     logger.error(err);
                   }
                   logger.info(
-                    "saved peep. hash=%s - previous=%s - remaining=%d",
+                    "saved peep. %j hash=%s - parent=%s",
+                    value,
                     files[0].hash,
-                    lastChild,
-                    peeps.length
+                    value.parentHash
                   );
-                  return resolve(this.chainPeeps(peeps, files[0].hash));
+                  return resolve(this.chainPeeps(peepkeys,peepkeymap,files[0].hash));
                 });
               } else {
                 logger.error(err);
@@ -226,9 +243,10 @@ class Peepin {
           );
         } else {
           logger.info(
-            "found link with last saved peep. lastChild=%s",
-            lastChild
+            "found link => %s, skip this one.",
+            value.parentHash
           );
+          return resolve(this.chainPeeps(peepkeys,peepkeymap,value.parentHash));
         }
       });
     });
@@ -258,37 +276,11 @@ class Peepin {
           return logger.error(new Error("error decoding method"));
         }
 
-        // updateAccount(_ipfsHash string)
-        // reply(_ipfsHash string)
-        // share(_ipfsHash string)
-        // saveBatch(_ipfsHash string)
-        // post(_ipfsHash string)
-        // createAccount(_name bytes16,_ipfsHash string)
-        // tip(_author address,_messageID string,_ownerTip uint256,_ipfsHash string)
-
-        // unFollow(_followee address)
-        // setIsActive(_isActive bool)
-        // follow(_followee address)
-        // changeName(_name bytes16)
-        // setNewAddress(_address address)
-        // newAddress()
-        // transferAccount(_address address)
-
-        // isActive()
-        // names( address)
-        // addresses( bytes32)
-        // owner()
-        // accountExists(_addr address)
-        // isValidName(bStr bytes16)
-        // tipPercentageLocked()
-
-        // cashout()
-        // setMinSiteTipPercentage(newMinPercentage uint256)
-        // interfaceInstances( uint256)
-        // lockMinSiteTipPercentage()
-        // interfaceInstanceCount()
-        // minSiteTipPercentage()
-        // transferOwnership(newOwner address)
+        let eventData = {
+          event: event,
+          transaction: transaction,
+          function: decodedData
+        };
 
         switch (decodedData.name) {
           case "updateAccount":
@@ -299,25 +291,40 @@ class Peepin {
           case "createAccount":
           case "tip":
             // these are functions that have an IPFS payload that needs to be resolved
-            var hash = decodedData.params.find(function(element) {
+            eventData.ipfsHash = decodedData.params.find(function(element) {
               return element.name === "_ipfsHash";
             }).value;
-            this.throttledIPFS.cat(hash).then(ipfsData => {
-              decodedData.ipfsData = JSON.parse(ipfsData.toString());
+            if (!eventData.ipfsHash) {
+//              logger.error("peep expected IPFS hash - none given %j", eventData);
               if (parsers[decodedData.name]) {
                 parsers[decodedData.name](
                   {
                     throttledIPFS: this.throttledIPFS,
                     web3: this.web3
                   },
-                  decodedData,
-                  transaction
+                  eventData
                 );
               } else {
                 logger.warn("No parser for function %s", decodedData.name);
                 process.exit();
               }
-            });
+            } else {
+              this.throttledIPFS.cat(eventData.ipfsHash).then(ipfsData => {
+                eventData.ipfsData = JSON.parse(ipfsData.toString());
+                if (parsers[decodedData.name]) {
+                  parsers[decodedData.name](
+                    {
+                      throttledIPFS: this.throttledIPFS,
+                      web3: this.web3
+                    },
+                    eventData
+                  );
+                } else {
+                  logger.warn("No parser for function %s", decodedData.name);
+                  process.exit();
+                }
+              });
+            }
             break;
 
           case "unFollow":
@@ -333,8 +340,7 @@ class Peepin {
                   throttledIPFS: this.throttledIPFS,
                   web3: this.web3
                 },
-                decodedData,
-                transaction
+                eventData
               );
             } else {
               logger.warn("No parser for function %s", decodedData.name);
