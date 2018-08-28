@@ -38,7 +38,7 @@ class Peepin {
       logger.info("dump peeps done. head hash=%s", headHash);
       this.go2();
     });
-//    this.go2();
+    //    this.go2();
   }
 
   go2() {
@@ -150,7 +150,7 @@ class Peepin {
 
   // dump the local cache with all users to IPFS
   dumpPeeps() {
-    let headPeep='';
+    let headPeep = "";
     return new Promise(resolve => {
       let orderedpeeps = {};
       db.createReadStream()
@@ -164,22 +164,30 @@ class Peepin {
           console.log("Oh my!", err);
         })
         .on("end", () => {
-          let peepkeys= Object.keys(orderedpeeps);
-          if (peepkeys.length === 0){
+          let peepkeys = Object.keys(orderedpeeps);
+          if (peepkeys.length === 0) {
             // no peeps yet to index.
             return resolve(null);
           }
           console.log("Stream ended. %d peeps", peepkeys.length);
           peepkeys.sort();
-          //peepkeys = peepkeys.reverse();
-          if (!headPeep){
-            headPeep = orderedpeeps[peepkeys[peepkeys.length-2]];
+          peepkeys = peepkeys.reverse();
+          if (!headPeep) {
+            headPeep = orderedpeeps[peepkeys[peepkeys.length - 2]];
           }
-          this.chainPeeps(peepkeys,orderedpeeps).then(()=>{
-            logger.info('chain finished. Head=%s',headPeep);
-            return resolve(headPeep);
+
+          db.get("currenthead", (err, currentHead) => {
+            logger.info('current head peep=',currentHead);
+            this.chainPeeps(peepkeys, orderedpeeps, currentHead).then(
+              headHash => {
+                logger.info("chain finished. New head=%s", headHash);
+                db.put("currenthead", headHash, err => {
+                  return resolve(headHash);
+                });
+              }
+            );
           });
-          
+
           // this.chainPeeps(peepkeys).then(key => {
           //   resolve(orderedpeeps[key]);
           // });
@@ -198,16 +206,16 @@ class Peepin {
     });
   }
 
-  chainPeeps(peepkeys,peepkeymap,parentHash) {
+  chainPeeps(peepkeys, peepkeymap, parentHash) {
     return new Promise(resolve => {
-      if (peepkeys.length===0){
+      if (peepkeys.length === 0) {
         return resolve(parentHash);
-      }else{
-        logger.info('%d peeps remaining',peepkeys.length);
+      } else {
+        logger.info("%d peeps remaining", peepkeys.length);
       }
       let key = peepkeys.pop();
-      logger.info('fetching peep %s',peepkeymap[key]);
-      db.get('peep-' + peepkeymap[key], (err, value) => {
+      logger.info("fetching peep %s", peepkeymap[key]);
+      db.get("peep-" + peepkeymap[key], (err, value) => {
         if (err) {
           if (err.notFound) {
             return;
@@ -215,8 +223,13 @@ class Peepin {
         }
         value = JSON.parse(value);
         //debugger;
-        logger.info("peep found. %s date %s", value.ipfsHash,new Date(value.ipfsData.untrustedTimestamp*1000).toString());
+        logger.info(
+          "peep found. %s date %s",
+          value.ipfsHash,
+          new Date(value.ipfsData.untrustedTimestamp * 1000).toString()
+        );
         //value.parentHash = null;
+        //debugger;
         if (!value.parentHash) {
           //debugger;
           value.parentHash = parentHash; //peepkeymap[peepkeys[peepkeys.length-1]];
@@ -224,17 +237,22 @@ class Peepin {
             Buffer.from(JSON.stringify(value)),
             (err, files) => {
               if (!err && files && files[0]) {
-                db.put('peep-' + key, JSON.stringify(value), err => {
+                db.put("peep-" + key, JSON.stringify(value), err => {
                   if (err) {
                     logger.error(err);
                   }
                   logger.info(
-                    "saved peep. %j hash=%s - parent=%s",
-                    value,
+                    "saved peep. metadata-hash=%s -> parent=%s",
                     files[0].hash,
                     value.parentHash
                   );
-                  return resolve(this.chainPeeps(peepkeys,peepkeymap,files[0].hash));
+                  return resolve(
+                    this.chainPeeps(
+                      peepkeys,
+                      peepkeymap,
+                      files[0].hash
+                    )
+                  );
                 });
               } else {
                 logger.error(err);
@@ -242,11 +260,10 @@ class Peepin {
             }
           );
         } else {
-          logger.info(
-            "found link => %s, skip this one.",
-            value.parentHash
+          logger.info("found link => %s, skip.", value.parentHash);
+          return resolve(
+            this.chainPeeps(peepkeys, peepkeymap, value.parentHash)
           );
-          return resolve(this.chainPeeps(peepkeys,peepkeymap,value.parentHash));
         }
       });
     });
@@ -295,7 +312,7 @@ class Peepin {
               return element.name === "_ipfsHash";
             }).value;
             if (!eventData.ipfsHash) {
-//              logger.error("peep expected IPFS hash - none given %j", eventData);
+              //              logger.error("peep expected IPFS hash - none given %j", eventData);
               if (parsers[decodedData.name]) {
                 parsers[decodedData.name](
                   {
