@@ -51,7 +51,7 @@ class Peepin {
 
     abiDecoder.addABI(metaData.abi);
 
-    this.lastReadBlock = metaData.startblock;
+    //this.lastReadBlock = metaData.startblock;
     this.eventCount = 0;
     this.pinCount = 0;
     this.picHashes = [];
@@ -71,13 +71,15 @@ class Peepin {
     this.web3.eth.getBlockNumber().then(blockNr => {
       logger.info("blockchain is at block %d", blockNr);
       this.highestBlock = parseInt(blockNr);
-      this.readEvents();
+      db.get("lastreadblock", (err, lastReadBlock) => {
+        this.readEvents(lastReadBlock || metaData.startblock);
+      });
     });
   }
 
   // Recursively reads events from a certain startBlock up to the highest block known
-  readEvents(checkSemaphore) {
-    let fromBlock = this.lastReadBlock;
+  readEvents(lastReadBlock, checkSemaphore) {
+    let fromBlock = lastReadBlock;
     let toBlock = fromBlock + 10000;
     if (toBlock > this.highestBlock) {
       toBlock = this.highestBlock;
@@ -103,20 +105,21 @@ class Peepin {
       (error, events) => {
         events.map(this.parseEvent.bind(this));
         logger.info("done..");
-        this.lastReadBlock = toBlock;
-        if (this.highestBlock > toBlock) {
-          this.readEvents(true);
-        } else {
-          logger.info(
-            "fromBlock %d - lastReadBlock %d - highestBlock %d",
-            fromBlock,
-            this.lastReadBlock,
-            this.highestBlock
-          );
-          logger.info("event reader going to sleep");
-          this.dumpUsers();
-          this.readingEvents = false;
-        }
+        db.put("lastreadblock", toBlock, err => {
+          if (this.highestBlock > toBlock) {
+            this.readEvents(true);
+          } else {
+            logger.info(
+              "fromBlock %d - lastReadBlock %d - highestBlock %d",
+              fromBlock,
+              toBlock,
+              this.highestBlock
+            );
+            logger.info("event reader going to sleep");
+            this.dumpUsers();
+            this.readingEvents = false;
+          }
+        });
       }
     );
   }
@@ -177,7 +180,7 @@ class Peepin {
           }
 
           db.get("currenthead", (err, currentHead) => {
-            logger.info('current head peep=',currentHead);
+            logger.info("current head peep=", currentHead);
             this.chainPeeps(peepkeys, orderedpeeps, currentHead).then(
               headHash => {
                 logger.info("chain finished. New head=%s", headHash);
@@ -247,11 +250,7 @@ class Peepin {
                     value.parentHash
                   );
                   return resolve(
-                    this.chainPeeps(
-                      peepkeys,
-                      peepkeymap,
-                      files[0].hash
-                    )
+                    this.chainPeeps(peepkeys, peepkeymap, files[0].hash)
                   );
                 });
               } else {
